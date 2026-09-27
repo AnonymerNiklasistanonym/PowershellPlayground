@@ -1,0 +1,3 @@
+node_modules
+# ignore since this is only a simple example
+package-lock.json
