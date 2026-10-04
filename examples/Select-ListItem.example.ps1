@@ -1,9 +1,6 @@
 #!/usr/bin/env pwsh
 
-. "$PSScriptRoot/interactive_selection.ps1"
-
-# Get help
-Get-Help Select-ListItem -Full
+Import-Module "$PSScriptRoot\..\Helper"
 
 # Select a git branch
 $branch = git branch --format='%(refname:short)' | Select-ListItem -Prompt 'Select a branch to switch to' -HighlightPattern (git branch --show-current) -DisplayScript {

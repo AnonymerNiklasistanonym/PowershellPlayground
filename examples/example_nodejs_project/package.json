@@ -1,0 +1,13 @@
+{
+  "scripts": {
+    "format": "oxlint",
+    "format:eslint": "eslint",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.12.0",
+    "oxlint": "^1.86.0",
+    "vitest": "^5.0.2"
+  }
+}

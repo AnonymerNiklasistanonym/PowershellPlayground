@@ -1,17 +1,7 @@
 #!/usr/bin/env pwsh
 
-function Format-Duration {
-    param(
-        [TimeSpan] $Duration
-    )
-    if ($Duration.TotalMinutes -lt 1) {
-        return "{0:N2}s" -f $Duration.TotalSeconds
-    }
-    if ($Duration.TotalHours -lt 1) {
-        return "{0:N2}m" -f $Duration.TotalMinutes
-    }
-    return "{0:N2}h" -f $Duration.TotalHours
-}
+. $PSScriptRoot/Format-ElapsedTime.ps1
+. $PSScriptRoot/Set-IOEncoding.ps1
 
 <#
 .SYNOPSIS
@@ -28,6 +18,15 @@ function Format-Duration {
 
 .PARAMETER ShowOutput
     Show the output even if the exit code was OK.
+
+.PARAMETER ShowOutputFilter
+    Customize showing output even if the exit code was OK (-ShowOutput takes precedence).
+
+.PARAMETER ForceColor
+    Add environment variables that force colors to combat pipe detection that turns colors off.
+
+.PARAMETER ForceUTF8
+    Temporarily set the input and output encoding to UTF-8 if its something else.
 
 .PARAMETER RerunOnFailWithOutput
     Instead of showing the recorded output rerun the command (e.g. for outputs that use colors and break when recorded).
@@ -49,16 +48,25 @@ function Invoke-CommandSummary {
         [string] $WorkingDirectory = (Get-Location),
         [switch] $AllowedToFail,
         [switch] $ShowOutput,
+        [scriptblock] $ShowOutputFilter,
+        [switch] $ForceColor,
+        [switch] $ForceUTF8,
         [switch] $RerunOnFailWithOutput
     )
-    $relativePath = [System.IO.Path]::GetRelativePath(
-        (Get-Location).Path,
+    $displayPath = if ($PSVersionTable.PSVersion.Major -ge 7) {
+        [System.IO.Path]::GetRelativePath(
+            (Get-Location).Path,
+            $WorkingDirectory
+        )
+    }
+    else {
         $WorkingDirectory
-    )
-    $display = if ($relativePath -eq '.') {
+    }
+    $display = if ($displayPath -eq '.') {
         "$Command"
-    } else {
-        "$Command [$relativePath]"
+    }
+    else {
+        "$Command [$displayPath]"
     }
     $status = "[..]  $display"
 
@@ -70,46 +78,71 @@ function Invoke-CommandSummary {
         throw "Directory does not exist: $WorkingDirectory [$absolutePath]"
     }
 
-    $sw = [System.Diagnostics.Stopwatch]::StartNew()
-    Push-Location $WorkingDirectory -ErrorAction Stop
     try {
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        Push-Location $WorkingDirectory -ErrorAction Stop
+        $oldErrorActionPreference = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        if ($ForceColor) {
+            $env:FORCE_COLOR = "1"
+        }
+        if ($ForceUTF8) {
+            $previousIOEncoding = Set-IOEncoding
+        }
         $output = & $Command 2>&1
         $exitCode = $LASTEXITCODE
     }
     finally {
+        $ErrorActionPreference = $oldErrorActionPreference
+        if ($ForceColor) {
+            Remove-Item Env:FORCE_COLOR
+        }
         Pop-Location
+        $sw.Stop()
     }
-    $sw.Stop()
 
     Write-Host "`r$status`r" -NoNewline
-    $duration = Format-Duration $sw.Elapsed
+
+    $duration = Format-ElapsedTime $sw.Elapsed
     if ($exitCode -eq 0) {
         Write-Host "[OK]  $display ($duration)" -ForegroundColor Green
         if ($ShowOutput) {
             $output
         }
-    } else {
-        $color = [ConsoleColor]::Red
-        if ($AllowedToFail) {
-            $color = [ConsoleColor]::Yellow
+        elseif ($ShowOutputFilter) {
+            & $ShowOutputFilter $output
         }
-        Write-Host "[ERR] $display (exit code $exitCode, $duration)" -ForegroundColor $color
-        if (-not $AllowedToFail) {
-            exit 1
+    }
+    else {
+        $statusTextColor = if ($AllowedToFail) {
+            [ConsoleColor]::Yellow
         }
+        else {
+            [ConsoleColor]::Red
+        }
+        Write-Host "[ERR] $display (exit code $exitCode, $duration)" -ForegroundColor $statusTextColor
         if ($RerunOnFailWithOutput) {
             Push-Location $WorkingDirectory -ErrorAction Stop
             try {
+                $oldErrorActionPreference = $ErrorActionPreference
+                $ErrorActionPreference = 'Continue'
                 & $Command
             }
             finally {
+                $ErrorActionPreference = $oldErrorActionPreference
                 Pop-Location
             }
-        } elseif ($output) {
+        }
+        elseif ($output) {
             $output
         }
-        if (-not $AllowedToFail) {
-            exit 1
-        }
+    }
+    if ($ForceUTF8) {
+        Set-IOEncoding -OutputEncoding $previousIOEncoding.OutputEncoding -InputEncoding $previousIOEncoding.InputEncoding | Out-Null
+    }
+    if (-not $exitCode -eq 0 -and -not $AllowedToFail) {
+        exit 1
     }
 }
+
+Export-ModuleMember -Function Invoke-CommandSummary
