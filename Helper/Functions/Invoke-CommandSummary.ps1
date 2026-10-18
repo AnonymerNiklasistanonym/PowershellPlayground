@@ -2,6 +2,7 @@
 
 . $PSScriptRoot/Format-ElapsedTime.ps1
 . $PSScriptRoot/Set-IOEncoding.ps1
+. $PSScriptRoot/Write-Log.ps1
 
 <#
 .SYNOPSIS
@@ -31,6 +32,12 @@
 .PARAMETER RerunOnFailWithOutput
     Instead of showing the recorded output rerun the command (e.g. for outputs that use colors and break when recorded).
 
+.PARAMETER LogFile
+    Store/Append important logs to a file
+
+.PARAMETER LogLevel
+    Store/Append important logs to a file
+
 .EXAMPLE
     Invoke-CommandSummary {echo "Test" && sleep 1s}
     Invoke-CommandSummary {echo "Test" && sleep 60s}
@@ -51,7 +58,10 @@ function Invoke-CommandSummary {
         [scriptblock] $ShowOutputFilter,
         [switch] $ForceColor,
         [switch] $ForceUTF8,
-        [switch] $RerunOnFailWithOutput
+        [switch] $RerunOnFailWithOutput,
+        [string] $LogFile,
+        [ValidateSet("Debug", "Error", "Warning", "Info")]
+        [string] $LogLevel = "Info"
     )
     $displayPath = if ($PSVersionTable.PSVersion.Major -ge 7) {
         [System.IO.Path]::GetRelativePath(
@@ -71,6 +81,7 @@ function Invoke-CommandSummary {
     $status = "[..]  $display"
 
     Write-Host $status -NoNewline
+    Write-Log $display -Level Info -Scope "Invoke-CommandSummary:Command" -LogFile $LogFile -LogLevel $LogLevel
 
     if (-not (Test-Path $WorkingDirectory -PathType Container)) {
         Write-Host ""
@@ -104,6 +115,23 @@ function Invoke-CommandSummary {
     Write-Host "`r$status`r" -NoNewline
 
     $duration = Format-ElapsedTime $sw.Elapsed
+
+    if ($exitCode -eq 0) {
+        $levelStatus = [LogSeverity]::Info
+        $levelOutput = [LogSeverity]::Debug
+    }
+    elseif ($AllowedToFail) {
+        $levelStatus = [LogSeverity]::Warning
+        $levelOutput = [LogSeverity]::Warning
+    }
+    else {
+        $levelStatus = [LogSeverity]::Error
+        $levelOutput = [LogSeverity]::Error
+    }
+    Write-Log "Exit code: $exitCode, Allowed to fail: $AllowedToFail, Duration: $duration" -Level $levelStatus -Scope "Invoke-CommandSummary:Status" -LogFile $LogFile -LogLevel $LogLevel
+    $PlainTextOutput = ($output -join "`n") -replace '\e\[[0-9;]*m', ''
+    Write-Log $PlainTextOutput -Level $levelOutput -Scope "Invoke-CommandSummary:Output" -LogFile $LogFile -LogLevel $LogLevel
+
     if ($exitCode -eq 0) {
         Write-Host "[OK]  $display ($duration)" -ForegroundColor Green
         if ($ShowOutput) {
@@ -141,6 +169,7 @@ function Invoke-CommandSummary {
         Set-IOEncoding -OutputEncoding $previousIOEncoding.OutputEncoding -InputEncoding $previousIOEncoding.InputEncoding | Out-Null
     }
     if (-not $exitCode -eq 0 -and -not $AllowedToFail) {
+        Write-Log "Exit because of exit code $exitCode" -Level Error -Scope "Invoke-CommandSummary:Exit" -LogFile $LogFile -LogLevel $LogLevel
         exit 1
     }
 }

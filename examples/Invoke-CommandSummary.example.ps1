@@ -2,10 +2,13 @@
 
 Import-Module "$PSScriptRoot\..\Helper" -Force
 
+$logFile = "example.log"
+
 Invoke-CommandSummary {Write-Output "Test" && sleep 1s}
 #Invoke-CommandSummary {echo "Test" && sleep 60s}
 Invoke-CommandSummary {Write-Output "Test" && sleep 1s} -ShowOutput
-Invoke-CommandSummary {sleep 1s && date && false} -AllowedToFail
+Invoke-CommandSummary {Write-Output "Test" && sleep 1s} -ShowOutput -LogFile $logFile
+Invoke-CommandSummary {sleep 1s && date && false} -AllowedToFail -LogFile $logFile
 Invoke-CommandSummary {sleep 1s && date && false} -AllowedToFail -RerunOnFailWithOutput
 Invoke-CommandSummary {Write-Output "Test" && sleep 1s && false} -AllowedToFail
 Invoke-CommandSummary {Write-Output install && npm run format} -ForceColor -ForceUTF8 -WorkingDirectory (Join-Path $PSScriptRoot 'example_nodejs_project') -ShowOutputFilter {
@@ -28,6 +31,6 @@ Invoke-CommandSummary {Write-Output install && npm run format} -ForceColor -Forc
             $line
         }
     }
-}
-Invoke-CommandSummary {npm install && npm test} -ForceColor -ForceUTF8 -WorkingDirectory (Join-Path $PSScriptRoot 'example_nodejs_project')
+} -LogFile $logFile
+Invoke-CommandSummary {npm install && npm test} -ForceColor -ForceUTF8 -WorkingDirectory (Join-Path $PSScriptRoot 'example_nodejs_project') -LogFile $logFile
 Invoke-CommandSummary {Write-Output "Test" && sleep 60s}
